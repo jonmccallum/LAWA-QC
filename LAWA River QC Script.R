@@ -16,17 +16,12 @@
 # 20170820 Datasets:  https://horizonsregionalcouncil-my.sharepoint.com/personal/sean_hodges_horizons_govt_nz/_layouts/15/guestaccess.aspx?folderid=0305cdb9b96d44b919a8a7e5c03212bd0&authkey=Aes8g14LFfyCVscYgPH54T4
 # Contact Sean Hodges (Sean.Hodges@horizons.govt.nz) about data access issues.
 
-
 ##### Inputs #####
-
-# Load packages
-library(tidyverse)
-library(lubridate)
 
 # Working directory (folder where LAWA data is saved, use forward slashes rather than back-slashes)
 setwd("H:/R/R Input")
 
-# File name
+# LAWA data file
 fname <- "Tasman 20170820 raw.csv"
 
 # Period of interest (5 yrs from January 2012 to December 2016 in this case)
@@ -41,67 +36,17 @@ TN_detlimit <- 0.01
 TP_detlimit <- 0.004
 
 
+##### Setup #####
 
-##### Helper Functions #####
+# Load packages
+library(tidyverse)
+library(lubridate)
 
-season_fun <- function(DateMonth){
-  # Function for classifying the months from quarterly data into seasons
-  # DateMonth is an integer from 1 to 12
-  # The default definition of summer is Jan, Feb & Mar but can be changed
-  
-  Season <- rep(NA, length(DateMonth))
-  Season[which(DateMonth %in% c(1,2,3))] <- "Summer"
-  Season[which(DateMonth %in% c(4,5,6))] <- "Autumn"
-  Season[which(DateMonth %in% c(7,8,9))] <- "Winter"
-  Season[which(DateMonth %in% c(10,11,12))] <- "Spring"
-  return(Season)
-}
+# Load helper functions
+source("H:/R/R Scripts/LAWA QC/LAWA River QC Helpers.R")
 
-range_fun <- function(parameter, Value){
-  # Function for classifying out of range data
-  # Relies on the the following low and high thresholds
-  # Customise to your needs:
-  LowThresholds = c(BDISC = 0.01, DRP = 0.0001,TN = 0.0001, TP = 0.0001,
-                    NH4 = 0.0001, TURB = 0.1, ECOLI = 1)
-  HighThresholds = c(BDISC = 20, DRP = 10, TN = 10, TP = 10,
-                     NH4 = 10, TURB = 50, ECOLI = 500000) 
-  RangeWarning <- rep(NA, length(Value))
-  RangeWarning[which(Value < LowThresholds[parameter])] <- "low"
-  RangeWarning[which(Value > HighThresholds[parameter])] <- "high"
-  return(RangeWarning)
-}
-
-outlier_fun <- function(Value, Date, coef = 1.5){
-  # Function for identifying outliers using 'boxplot.stats'
-  # Outliers are more extreme than 1.5x the inter-quartile range from the first or third quartile
-  BoxStats <- boxplot.stats(Value, coef = coef)
-  OutlierWarning <- rep(NA, length(Value))
-  OutlierWarning[which(Value < BoxStats$stats[1])] <- "low"
-  OutlierWarning[which(Value > BoxStats$stats[5])] <- "high"
-  # Convert output to data frame
-  Results <- data.frame(Value = Value, Date = Date,
-                        OutlierWarning = OutlierWarning, stringsAsFactors = F)
-  return(Results)
-}
-
-
-##### Load Data #####
-
-# Read LAWA data for one region
-d <- read_csv(fname) %>%
-  # select columns of interest
-  select(SiteName, Date, parameter, Value, Frequency, Censored, CenType) %>%
-  # pull out full date component, the month and the year
-  mutate(DateDay = date(Date),
-         DateMonth = month(Date),
-         DateYear = year(Date),
-         # classify months into seasons
-         # Uses season_fun() for quarterly or month() for monthly
-         Season = if(sfrequency == "Quarterly") season_fun(DateMonth) else DateMonth) %>%
-  # filter to period of interest
-  filter(between(DateDay, date_start, date_end)) %>%
-  # sort by site, parameter and date
-  arrange(SiteName, parameter, DateDay)
+# Read LAWA data
+d <- read_lawa(fname, sfrequency)
 
 
 ##### < and > symbols #####
@@ -128,7 +73,7 @@ d_last <- d %>%
 # Missing combinations of site, parameter, year and season
 # Ignores combinations that don't occur in the data
 # For example, if TON was not collected during all of 2014, if won't be listed as missing
-# The definition of 'season' is important here (set in season_fun helper function)
+# Note that for Quarterly data, the definition of 'Season' affects the output (this is set in the season_fun helper function)
 d_missing <- d %>%
   # 'nesting' limits combinations to those that occur in the data
   complete(nesting(SiteName, parameter, DateYear), Season) %>%
